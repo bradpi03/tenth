@@ -9,6 +9,12 @@ EXIT_COST = 0.001
 TRADING_DAYS_PER_YEAR = 252
 RISK_FREE_RATE = 0.0
 TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "JPM", "XOM", "SPY"]
+B009_ASSET_UNIVERSE = [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "JPM", "XOM", "SPY",
+    "META", "NFLX", "TSLA", "INTC", "IBM", "CSCO", "ORCL", "WMT",
+    "COST", "KO", "PG", "JNJ", "PFE", "CVX", "BAC", "GS", "CAT",
+    "BA", "DIS", "GE"
+]
 
 
 def compute_summary(values):
@@ -232,6 +238,50 @@ def build_backtest_006(df):
     return df
 
 
+def build_backtest_009(df):
+    df = df.copy()
+    df["SMA20"] = df["Close"].rolling(20).mean()
+    df["SMA50"] = df["Close"].rolling(50).mean()
+    df["SMA200"] = df["Close"].rolling(200).mean()
+    df["Trend_Signal"] = (df["SMA20"] > df["SMA50"]).astype(int)
+    df["RSI14"] = calculate_rsi(df["Close"], period=14)
+    df["RSI_Above_50"] = (df["RSI14"] > 50).astype(int)
+    df["Above_SMA200"] = (df["Close"] > df["SMA200"]).astype(int)
+    df["Market_Return"] = df["Close"].pct_change()
+
+    # Backtest 009: previous-day state logic only.
+    # State 1: 100% exposure when the full frozen B006 entry signal is active.
+    # State 2: 50% exposure when Close > SMA200 but the full B006 entry signal is not active.
+    # State 3: 0% exposure when Close <= SMA200.
+    exposures = np.zeros(len(df), dtype=float)
+    for i in range(len(df)):
+        if i == 0:
+            exposure = 0.0
+        else:
+            full_b006_entry = (
+                (df["Trend_Signal"].iloc[i - 1] == 1)
+                and (df["RSI_Above_50"].iloc[i - 1] == 1)
+                and (df["Above_SMA200"].iloc[i - 1] == 1)
+            )
+            above_200 = (df["Above_SMA200"].iloc[i - 1] == 1)
+            if full_b006_entry:
+                exposure = 1.0
+            elif above_200:
+                exposure = 0.5
+            else:
+                exposure = 0.0
+        exposures[i] = exposure
+
+    df["Exposure"] = exposures
+    df["Exposure_Change"] = df["Exposure"].diff().fillna(0.0).abs()
+    df["Transaction_Cost"] = df["Exposure_Change"] * (ENTRY_COST + EXIT_COST)
+    df["Strategy_Return"] = df["Exposure"] * df["Market_Return"] - df["Transaction_Cost"]
+
+    df = df.dropna(subset=["Market_Return", "Strategy_Return"]).copy()
+    df["Strategy_Value"] = STARTING_CAPITAL * (1.0 + df["Strategy_Return"]).cumprod()
+    return df
+
+
 def evaluate_ticker(ticker):
     data = yf.download(
         ticker,
@@ -300,14 +350,21 @@ def evaluate_ticker(ticker):
     }
 
 
-def load_ticker_data(ticker, period="15y"):
-    data = yf.download(
-        ticker,
-        period=period,
-        interval="1d",
-        auto_adjust=True,
-        progress=False,
-    )
+def load_ticker_data(ticker, period="15y", start=None, end=None):
+    download_kwargs = {
+        "interval": "1d",
+        "auto_adjust": True,
+        "progress": False,
+    }
+
+    if start is not None:
+        download_kwargs["start"] = start
+        if end is not None:
+            download_kwargs["end"] = end
+    else:
+        download_kwargs["period"] = period
+
+    data = yf.download(ticker, **download_kwargs)
     if data.empty:
         return pd.DataFrame(columns=["Close"])
 
@@ -538,112 +595,211 @@ def evaluate_additional_asset(ticker):
     }
 
 
+def print_b009_asset_metrics(results):
+    for result in results:
+        print(f"\n{result['ticker']}")
+        print(f"  Dates: {result['test_start']} to {result['test_end']}")
+        print(f"  Buy & Hold total return: {(result['buy_hold_total_return'] * 100):.2f}%")
+        print(f"  Buy & Hold annualised return: {(result['buy_hold_annualised_return'] * 100):.2f}%")
+        print(f"  Buy & Hold annualised volatility: {(result['buy_hold_annualised_volatility'] * 100):.2f}%")
+        print(f"  Buy & Hold Sharpe: {result['buy_hold_sharpe']:.2f}")
+        print(f"  Buy & Hold max drawdown: {(result['buy_hold_max_drawdown'] * 100):.2f}%")
+        print(f"  Buy & Hold market exposure: {100.0:.1f}%")
+        print(f"  B006 total return: {(result['b006_total_return'] * 100):.2f}%")
+        print(f"  B006 annualised return: {(result['b006_annualised_return'] * 100):.2f}%")
+        print(f"  B006 annualised volatility: {(result['b006_annualised_volatility'] * 100):.2f}%")
+        print(f"  B006 Sharpe: {result['b006_sharpe']:.2f}")
+        print(f"  B006 max drawdown: {(result['b006_max_drawdown'] * 100):.2f}%")
+        print(f"  B006 market exposure: {result['b006_market_exposure']:.1f}%")
+        print(f"  B006 completed trades: {result['b006_completed_trades']}")
+        print(f"  B006 transaction costs: {result['b006_transaction_costs']:.4f}")
+        print(f"  B006 upside capture: {result['b006_upside_capture']:.3f}" if result['b006_upside_capture'] is not None else "  B006 upside capture: N/A")
+        print(f"  B009 total return: {(result['b009_total_return'] * 100):.2f}%")
+        print(f"  B009 annualised return: {(result['b009_annualised_return'] * 100):.2f}%")
+        print(f"  B009 annualised volatility: {(result['b009_annualised_volatility'] * 100):.2f}%")
+        print(f"  B009 Sharpe: {result['b009_sharpe']:.2f}")
+        print(f"  B009 max drawdown: {(result['b009_max_drawdown'] * 100):.2f}%")
+        print(f"  B009 market exposure: {result['b009_market_exposure']:.1f}%")
+        print(f"  B009 exposure changes: {result['b009_exposure_changes']}")
+        print(f"  B009 transaction costs: {result['b009_transaction_costs']:.4f}")
+        print(f"  B009 upside capture: {result['b009_upside_capture']:.3f}" if result['b009_upside_capture'] is not None else "  B009 upside capture: N/A")
+
+
+def evaluate_b009_ticker(ticker):
+    start_date = pd.Timestamp("2011-08-28")
+    end_date = pd.Timestamp("2016-08-27")
+    data = load_ticker_data(ticker, start="2010-01-01")
+    if data.empty:
+        return {
+            "ticker": ticker,
+            "eligible": False,
+            "reason": "no data available after download",
+        }
+
+    warmup_start = start_date - pd.DateOffset(days=250)
+    warmup_df = data.loc[(data.index >= warmup_start) & (data.index <= end_date)].copy()
+    test_df = data.loc[(data.index >= start_date) & (data.index <= end_date)].copy()
+
+    if test_df.empty:
+        return {
+            "ticker": ticker,
+            "eligible": False,
+            "reason": "no data in required test window",
+        }
+
+    if warmup_df.empty or warmup_df.index.min() > start_date:
+        return {
+            "ticker": ticker,
+            "eligible": False,
+            "reason": "insufficient historical data for warm-up and test window",
+        }
+
+    bh_value = STARTING_CAPITAL * (1.0 + test_df["Close"].pct_change().fillna(0)).cumprod()
+    b006_df = build_backtest_006(warmup_df)
+    b006_df = b006_df.loc[(b006_df.index >= start_date) & (b006_df.index <= end_date)].copy()
+    b009_df = build_backtest_009(warmup_df)
+    b009_df = b009_df.loc[(b009_df.index >= start_date) & (b009_df.index <= end_date)].copy()
+
+    if b006_df.empty or b009_df.empty:
+        return {
+            "ticker": ticker,
+            "eligible": False,
+            "reason": "no valid strategy observations in the test window",
+        }
+
+    bh_summary = compute_summary(bh_value)
+    b006_summary = compute_summary(b006_df["Strategy_Value"])
+    b009_summary = compute_summary(b009_df["Strategy_Value"])
+    b006_cost_total = float(b006_df["Entry_Trade"].sum() * ENTRY_COST + b006_df["Exit_Trade"].sum() * EXIT_COST)
+    b009_cost_total = float(b009_df["Transaction_Cost"].sum())
+
+    buy_hold_annual = bh_summary["annualised_return"]
+    b006_capture = (b006_summary["annualised_return"] / buy_hold_annual) if buy_hold_annual > 0 else None
+    b009_capture = (b009_summary["annualised_return"] / buy_hold_annual) if buy_hold_annual > 0 else None
+
+    b006_trades, b006_win, _, _ = compute_trade_metrics(b006_df)
+    b009_exposure_changes = int(np.count_nonzero(b009_df["Exposure"].diff().fillna(0.0) != 0.0))
+
+    return {
+        "ticker": ticker,
+        "eligible": True,
+        "test_start": start_date.strftime("%Y-%m-%d"),
+        "test_end": end_date.strftime("%Y-%m-%d"),
+        "buy_hold_total_return": bh_summary["total_return"],
+        "buy_hold_annualised_return": bh_summary["annualised_return"],
+        "buy_hold_annualised_volatility": bh_summary["annualised_volatility"],
+        "buy_hold_sharpe": bh_summary["sharpe"],
+        "buy_hold_max_drawdown": bh_summary["max_drawdown"],
+        "b006_total_return": b006_summary["total_return"],
+        "b006_annualised_return": b006_summary["annualised_return"],
+        "b006_annualised_volatility": b006_summary["annualised_volatility"],
+        "b006_sharpe": b006_summary["sharpe"],
+        "b006_max_drawdown": b006_summary["max_drawdown"],
+        "b006_market_exposure": b006_df["Position"].mean() * 100.0,
+        "b006_completed_trades": b006_trades,
+        "b006_transaction_costs": b006_cost_total,
+        "b006_upside_capture": b006_capture,
+        "b009_total_return": b009_summary["total_return"],
+        "b009_annualised_return": b009_summary["annualised_return"],
+        "b009_annualised_volatility": b009_summary["annualised_volatility"],
+        "b009_sharpe": b009_summary["sharpe"],
+        "b009_max_drawdown": b009_summary["max_drawdown"],
+        "b009_market_exposure": b009_df["Exposure"].mean() * 100.0,
+        "b009_exposure_changes": b009_exposure_changes,
+        "b009_transaction_costs": b009_cost_total,
+        "b009_upside_capture": b009_capture,
+    }
+
+
 def main():
-    print("\nTENTH — BACKTEST 008 — ROBUSTNESS AUDIT")
-    print("Frozen strategy: Backtest 006 rules retained exactly")
+    print("\nTENTH — BACKTEST 009 — PARTIAL EXPOSURE TEST")
+    print("Frozen baseline: Backtest 006 rules retained exactly")
+    print("Hypothesis: retain 50% exposure while the market regime remains bullish, otherwise hold cash")
     print(f"Starting capital: ${STARTING_CAPITAL:,.2f}")
     print(f"Transaction cost: {ENTRY_COST * 100:.2f}% entry / {EXIT_COST * 100:.2f}% exit")
-    print("Out-of-sample window: 2016-08-28 to 2021-08-27")
-    print("Strategy: exact Backtest 006 entry/exit logic, no tuning or changes")
+    print("Test window: 2011-08-28 to 2016-08-27")
+    print("Previous-day data only; no indicator changes; no parameter tuning")
 
-    evaluate_b007_drawdown_audit()
-
-    additional_assets = [
-        "META", "NFLX", "TSLA", "INTC", "IBM", "CSCO", "ORCL", "WMT",
-        "COST", "KO", "PG", "JNJ", "PFE", "CVX", "BAC", "GS", "CAT",
-        "BA", "DIS", "GE"
-    ]
-
-    print("\nPART 2 — BROADER CROSS-ASSET ROBUSTNESS TEST")
-    eligible_assets = []
-    ineligible_assets = []
-    for ticker in additional_assets:
-        result = evaluate_additional_asset(ticker)
+    results = []
+    ineligible = []
+    for ticker in B009_ASSET_UNIVERSE:
+        result = evaluate_b009_ticker(ticker)
         if result["eligible"]:
-            eligible_assets.append(result)
-            print(f"\n{ticker}")
-            print(f"  Test dates: {result['test_start']} to {result['test_end']}")
-            print(f"  Buy & Hold total return: {(result['buy_hold_total_return'] * 100):.2f}%")
-            print(f"  Strategy total return: {(result['strategy_total_return'] * 100):.2f}%")
-            print(f"  Buy & Hold annualised return: {(result['buy_hold_annualised_return'] * 100):.2f}%")
-            print(f"  Strategy annualised return: {(result['strategy_annualised_return'] * 100):.2f}%")
-            print(f"  Buy & Hold Sharpe: {result['buy_hold_sharpe']:.2f}")
-            print(f"  Strategy Sharpe: {result['strategy_sharpe']:.2f}")
-            print(f"  Buy & Hold maximum drawdown: {(result['buy_hold_max_drawdown'] * 100):.2f}%")
-            print(f"  Strategy maximum drawdown: {(result['strategy_max_drawdown'] * 100):.2f}%")
-            print(f"  Completed trades: {result['completed_trades']}")
-            print(f"  Win rate: {result['win_rate'] * 100:.2f}%")
-            print(f"  Market exposure: {result['market_exposure']:.1f}%")
+            results.append(result)
         else:
-            ineligible_assets.append((ticker, result["reason"]))
-            print(f"\n{ticker}")
-            print(f"  INELIGIBLE: {result['reason']}")
+            ineligible.append((ticker, result.get("reason", "unknown reason")))
 
-    if eligible_assets:
-        positive_returns = sum(1 for r in eligible_assets if r["strategy_total_return"] > 0)
-        beat_bh = sum(1 for r in eligible_assets if r["strategy_total_return"] > r["buy_hold_total_return"])
-        sharpe_beats = sum(1 for r in eligible_assets if r["strategy_sharpe"] > r["buy_hold_sharpe"])
-        dd_smaller = sum(1 for r in eligible_assets if r["strategy_max_drawdown"] > r["buy_hold_max_drawdown"])
-        median_strategy_return = np.median([r["strategy_annualised_return"] for r in eligible_assets]) * 100
-        median_buy_hold_return = np.median([r["buy_hold_annualised_return"] for r in eligible_assets]) * 100
-        median_strategy_sharpe = np.median([r["strategy_sharpe"] for r in eligible_assets])
-        median_buy_hold_sharpe = np.median([r["buy_hold_sharpe"] for r in eligible_assets])
-        median_strategy_dd = np.median([r["strategy_max_drawdown"] for r in eligible_assets]) * 100
-        median_buy_hold_dd = np.median([r["buy_hold_max_drawdown"] for r in eligible_assets]) * 100
-        median_market_exposure = np.median([r["market_exposure"] for r in eligible_assets])
+    print("\nPART 1 — ASSET-LEVEL COMPARISONS")
+    print_b009_asset_metrics(results)
 
-        print("\nPART 3 — AGGREGATE ROBUSTNESS SUMMARY")
-        print(f"Eligible assets: {len(eligible_assets)}")
-        print(f"Positive-return strategy assets: {positive_returns} / {len(eligible_assets)}")
-        print(f"Assets where strategy beats Buy & Hold: {beat_bh} / {len(eligible_assets)}")
-        print(f"Assets where strategy Sharpe exceeds Buy & Hold: {sharpe_beats} / {len(eligible_assets)}")
-        print(f"Assets where strategy max drawdown is smaller than Buy & Hold: {dd_smaller} / {len(eligible_assets)}")
-        print(f"Median strategy annualised return: {median_strategy_return:.2f}%")
-        print(f"Median Buy & Hold annualised return: {median_buy_hold_return:.2f}%")
-        print(f"Median strategy Sharpe: {median_strategy_sharpe:.2f}")
-        print(f"Median Buy & Hold Sharpe: {median_buy_hold_sharpe:.2f}")
-        print(f"Median strategy max drawdown: {median_strategy_dd:.2f}%")
-        print(f"Median Buy & Hold max drawdown: {median_buy_hold_dd:.2f}%")
-        print(f"Median market exposure: {median_market_exposure:.1f}%")
-
-    original_eligible = [r for r in [evaluate_ticker_b007(ticker) for ticker in TICKERS] if r["eligible"]]
-    combined_eligible = original_eligible + eligible_assets
-    if combined_eligible:
-        positive_returns = sum(1 for r in combined_eligible if r["strategy_total_return"] > 0)
-        beat_bh = sum(1 for r in combined_eligible if r["strategy_total_return"] > r["buy_hold_total_return"])
-        sharpe_beats = sum(1 for r in combined_eligible if r["strategy_sharpe"] > r["buy_hold_sharpe"])
-        dd_smaller = sum(1 for r in combined_eligible if r["strategy_max_drawdown"] > r["buy_hold_max_drawdown"])
-        median_strategy_return = np.median([r["strategy_annualised_return"] for r in combined_eligible]) * 100
-        median_buy_hold_return = np.median([r["buy_hold_annualised_return"] for r in combined_eligible]) * 100
-        median_strategy_sharpe = np.median([r["strategy_sharpe"] for r in combined_eligible])
-        median_buy_hold_sharpe = np.median([r["buy_hold_sharpe"] for r in combined_eligible])
-        median_strategy_dd = np.median([r["strategy_max_drawdown"] for r in combined_eligible]) * 100
-        median_buy_hold_dd = np.median([r["buy_hold_max_drawdown"] for r in combined_eligible]) * 100
-        median_market_exposure = np.median([r["market_exposure"] for r in combined_eligible])
-
-        print("\nCombined summary: original 8 B007 assets + additional B008 eligible assets")
-        print(f"Eligible assets: {len(combined_eligible)}")
-        print(f"Positive-return strategy assets: {positive_returns} / {len(combined_eligible)}")
-        print(f"Assets where strategy beats Buy & Hold: {beat_bh} / {len(combined_eligible)}")
-        print(f"Assets where strategy Sharpe exceeds Buy & Hold: {sharpe_beats} / {len(combined_eligible)}")
-        print(f"Assets where strategy max drawdown is smaller than Buy & Hold: {dd_smaller} / {len(combined_eligible)}")
-        print(f"Median strategy annualised return: {median_strategy_return:.2f}%")
-        print(f"Median Buy & Hold annualised return: {median_buy_hold_return:.2f}%")
-        print(f"Median strategy Sharpe: {median_strategy_sharpe:.2f}")
-        print(f"Median Buy & Hold Sharpe: {median_buy_hold_sharpe:.2f}")
-        print(f"Median strategy max drawdown: {median_strategy_dd:.2f}%")
-        print(f"Median Buy & Hold max drawdown: {median_buy_hold_dd:.2f}%")
-        print(f"Median market exposure: {median_market_exposure:.1f}%")
-
-    if ineligible_assets:
-        print("\nIneligible additional assets:")
-        for ticker, reason in ineligible_assets:
+    if ineligible:
+        print("\nINELIGIBLE ASSETS")
+        for ticker, reason in ineligible:
             print(f"  {ticker}: {reason}")
 
-    print("\nFrozen Backtest 006 rules retained exactly:")
-    print("Entry: previous-day SMA20 > SMA50, previous-day RSI(14) > 50, previous-day Close > SMA200")
-    print("Exit: original Backtest 003 exit logic")
-    print("Transaction costs and look-ahead protections preserved exactly")
+    eligible_assets = results
+    if eligible_assets:
+        positive_b006 = sum(1 for r in eligible_assets if r["b006_total_return"] > 0)
+        positive_b009 = sum(1 for r in eligible_assets if r["b009_total_return"] > 0)
+        beat_bh_b006 = sum(1 for r in eligible_assets if r["b006_total_return"] > r["buy_hold_total_return"])
+        beat_bh_b009 = sum(1 for r in eligible_assets if r["b009_total_return"] > r["buy_hold_total_return"])
+        sharpe_bh_b006 = sum(1 for r in eligible_assets if r["b006_sharpe"] > r["buy_hold_sharpe"])
+        sharpe_bh_b009 = sum(1 for r in eligible_assets if r["b009_sharpe"] > r["buy_hold_sharpe"])
+        dd_less_b006 = sum(1 for r in eligible_assets if r["b006_max_drawdown"] > r["buy_hold_max_drawdown"])
+        dd_less_b009 = sum(1 for r in eligible_assets if r["b009_max_drawdown"] > r["buy_hold_max_drawdown"])
+        b009_above_b006 = sum(1 for r in eligible_assets if r["b009_annualised_return"] > r["b006_annualised_return"])
+        b009_sharpe_above_b006 = sum(1 for r in eligible_assets if r["b009_sharpe"] > r["b006_sharpe"])
+        b009_dd_better_than_b006 = sum(1 for r in eligible_assets if r["b009_max_drawdown"] > r["b006_max_drawdown"])
+
+        median_buy_hold_return = np.median([r["buy_hold_annualised_return"] for r in eligible_assets]) * 100
+        median_b006_return = np.median([r["b006_annualised_return"] for r in eligible_assets]) * 100
+        median_b009_return = np.median([r["b009_annualised_return"] for r in eligible_assets]) * 100
+        median_buy_hold_sharpe = np.median([r["buy_hold_sharpe"] for r in eligible_assets])
+        median_b006_sharpe = np.median([r["b006_sharpe"] for r in eligible_assets])
+        median_b009_sharpe = np.median([r["b009_sharpe"] for r in eligible_assets])
+        median_buy_hold_dd = np.median([r["buy_hold_max_drawdown"] for r in eligible_assets]) * 100
+        median_b006_dd = np.median([r["b006_max_drawdown"] for r in eligible_assets]) * 100
+        median_b009_dd = np.median([r["b009_max_drawdown"] for r in eligible_assets]) * 100
+        median_b006_exposure = np.median([r["b006_market_exposure"] for r in eligible_assets])
+        median_b009_exposure = np.median([r["b009_market_exposure"] for r in eligible_assets])
+        upside_b006 = [r["b006_upside_capture"] for r in eligible_assets if r["b006_upside_capture"] is not None]
+        upside_b009 = [r["b009_upside_capture"] for r in eligible_assets if r["b009_upside_capture"] is not None]
+        median_b006_upside = np.median(upside_b006) if upside_b006 else None
+        median_b009_upside = np.median(upside_b009) if upside_b009 else None
+
+        print("\nPART 2 — AGGREGATE RESULTS")
+        print(f"Eligible assets: {len(eligible_assets)}")
+        print(f"Positive-return assets: B006 {positive_b006} / {len(eligible_assets)} | B009 {positive_b009} / {len(eligible_assets)}")
+        print(f"Assets where strategy beats Buy & Hold total return: B006 {beat_bh_b006} / {len(eligible_assets)} | B009 {beat_bh_b009} / {len(eligible_assets)}")
+        print(f"Assets where strategy Sharpe exceeds Buy & Hold: B006 {sharpe_bh_b006} / {len(eligible_assets)} | B009 {sharpe_bh_b009} / {len(eligible_assets)}")
+        print(f"Assets where max drawdown is less severe than Buy & Hold: B006 {dd_less_b006} / {len(eligible_assets)} | B009 {dd_less_b009} / {len(eligible_assets)}")
+        print(f"Assets where B009 annualised return exceeds B006: {b009_above_b006} / {len(eligible_assets)}")
+        print(f"Assets where B009 Sharpe exceeds B006: {b009_sharpe_above_b006} / {len(eligible_assets)}")
+        print(f"Assets where B009 drawdown is less severe than B006: {b009_dd_better_than_b006} / {len(eligible_assets)}")
+        print(f"Median annualised return: Buy & Hold {median_buy_hold_return:.2f}% | B006 {median_b006_return:.2f}% | B009 {median_b009_return:.2f}%")
+        print(f"Median Sharpe: Buy & Hold {median_buy_hold_sharpe:.2f} | B006 {median_b006_sharpe:.2f} | B009 {median_b009_sharpe:.2f}")
+        print(f"Median max drawdown: Buy & Hold {median_buy_hold_dd:.2f}% | B006 {median_b006_dd:.2f}% | B009 {median_b009_dd:.2f}%")
+        print(f"Median market exposure: B006 {median_b006_exposure:.1f}% | B009 {median_b009_exposure:.1f}%")
+        print(f"Median upside capture: B006 {median_b006_upside:.3f} | B009 {median_b009_upside:.3f}")
+
+    print("\nPART 3 — RESEARCH CONCLUSION")
+    if eligible_assets:
+        avg_return_gain = np.mean([r["b009_annualised_return"] - r["b006_annualised_return"] for r in eligible_assets]) * 100
+        avg_sharpe_gain = np.mean([r["b009_sharpe"] - r["b006_sharpe"] for r in eligible_assets])
+        avg_dd_change = np.mean([r["b009_max_drawdown"] - r["b006_max_drawdown"] for r in eligible_assets]) * 100
+        avg_exposure_change = np.mean([r["b009_market_exposure"] - r["b006_market_exposure"] for r in eligible_assets])
+        print(f"Average annualised return change, B009 minus B006: {avg_return_gain:.2f} percentage points")
+        print(f"Average Sharpe change, B009 minus B006: {avg_sharpe_gain:.2f}")
+        print(f"Average max drawdown change, B009 minus B006: {avg_dd_change:.2f} percentage points")
+        print(f"Average market exposure change, B009 minus B006: {avg_exposure_change:.2f} percentage points")
+
+    print("1. Did B009 materially increase upside capture versus frozen B006? The run reports a direct comparison of annualised return and upside capture with the frozen baseline; the answer depends on the aggregate evidence, not on any single asset.")
+    print("2. What happened to maximum drawdown? B009 typically increases market exposure relative to B006 and therefore tends to reduce the drawdown protection that the frozen regime provided, while leaving the entry logic unchanged.")
+    print("3. What happened to Sharpe ratio? Sharpe is expected to move with the trade-off between return, volatility and market exposure; it should be interpreted alongside drawdown rather than as a unilateral success measure.")
+    print("4. Was the additional return mainly explained by simply spending more time in the market? In this experiment, yes, the partial exposure rule is intentionally designed to keep the portfolio invested more often when the long-term regime remains positive, so any return lift can be interpreted as a market-exposure effect rather than a new signal.")
+    print("5. Does this result justify further investigation of partial exposure? Only if the return gain is accompanied by acceptable drawdown and Sharpe trade-offs; the evidence should be evaluated on the full risk-return profile, not on return alone.")
+    print("Trade-off summary: B009 is a controlled test of whether partial exposure retains more upside without abandoning the long-term bullish regime, but it does not imply a superior strategy unless the return increase is accompanied by acceptable drawdown and Sharpe behaviour.")
+    print("Frozen Backtest 006 rules retained exactly; B009 was evaluated once on the new earlier period 2011-08-28 to 2016-08-27.")
 
 
 if __name__ == "__main__":
