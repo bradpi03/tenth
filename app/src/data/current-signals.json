@@ -1,0 +1,174 @@
+{
+  "portfolioValue": 5987.653513809264,
+  "signals": [
+    {
+      "ticker": "AAPL",
+      "state": "PARTIAL",
+      "target_weight": 0.02631578947368421,
+      "approximate_allocation": 157.5698293107701
+    },
+    {
+      "ticker": "MSFT",
+      "state": "PARTIAL",
+      "target_weight": 0.02631578947368421,
+      "approximate_allocation": 157.5698293107701
+    },
+    {
+      "ticker": "GOOGL",
+      "state": "PARTIAL",
+      "target_weight": 0.02631578947368421,
+      "approximate_allocation": 157.5698293107701
+    },
+    {
+      "ticker": "AMZN",
+      "state": "PARTIAL",
+      "target_weight": 0.02631578947368421,
+      "approximate_allocation": 157.5698293107701
+    },
+    {
+      "ticker": "NVDA",
+      "state": "PARTIAL",
+      "target_weight": 0.02631578947368421,
+      "approximate_allocation": 157.5698293107701
+    },
+    {
+      "ticker": "JPM",
+      "state": "FULL",
+      "target_weight": 0.05263157894736842,
+      "approximate_allocation": 315.1396586215402
+    },
+    {
+      "ticker": "XOM",
+      "state": "FULL",
+      "target_weight": 0.05263157894736842,
+      "approximate_allocation": 315.1396586215402
+    },
+    {
+      "ticker": "SPY",
+      "state": "PARTIAL",
+      "target_weight": 0.02631578947368421,
+      "approximate_allocation": 157.5698293107701
+    },
+    {
+      "ticker": "META",
+      "state": "CASH",
+      "target_weight": 0.0,
+      "approximate_allocation": 0.0
+    },
+    {
+      "ticker": "NFLX",
+      "state": "CASH",
+      "target_weight": 0.0,
+      "approximate_allocation": 0.0
+    },
+    {
+      "ticker": "TSLA",
+      "state": "CASH",
+      "target_weight": 0.0,
+      "approximate_allocation": 0.0
+    },
+    {
+      "ticker": "INTC",
+      "state": "PARTIAL",
+      "target_weight": 0.02631578947368421,
+      "approximate_allocation": 157.5698293107701
+    },
+    {
+      "ticker": "IBM",
+      "state": "CASH",
+      "target_weight": 0.0,
+      "approximate_allocation": 0.0
+    },
+    {
+      "ticker": "CSCO",
+      "state": "PARTIAL",
+      "target_weight": 0.02631578947368421,
+      "approximate_allocation": 157.5698293107701
+    },
+    {
+      "ticker": "ORCL",
+      "state": "CASH",
+      "target_weight": 0.0,
+      "approximate_allocation": 0.0
+    },
+    {
+      "ticker": "WMT",
+      "state": "CASH",
+      "target_weight": 0.0,
+      "approximate_allocation": 0.0
+    },
+    {
+      "ticker": "COST",
+      "state": "CASH",
+      "target_weight": 0.0,
+      "approximate_allocation": 0.0
+    },
+    {
+      "ticker": "KO",
+      "state": "FULL",
+      "target_weight": 0.05263157894736842,
+      "approximate_allocation": 315.1396586215402
+    },
+    {
+      "ticker": "PG",
+      "state": "CASH",
+      "target_weight": 0.0,
+      "approximate_allocation": 0.0
+    },
+    {
+      "ticker": "JNJ",
+      "state": "FULL",
+      "target_weight": 0.05263157894736842,
+      "approximate_allocation": 315.1396586215402
+    },
+    {
+      "ticker": "PFE",
+      "state": "FULL",
+      "target_weight": 0.05263157894736842,
+      "approximate_allocation": 315.1396586215402
+    },
+    {
+      "ticker": "CVX",
+      "state": "FULL",
+      "target_weight": 0.05263157894736842,
+      "approximate_allocation": 315.1396586215402
+    },
+    {
+      "ticker": "BAC",
+      "state": "PARTIAL",
+      "target_weight": 0.02631578947368421,
+      "approximate_allocation": 157.5698293107701
+    },
+    {
+      "ticker": "GS",
+      "state": "PARTIAL",
+      "target_weight": 0.02631578947368421,
+      "approximate_allocation": 157.5698293107701
+    },
+    {
+      "ticker": "CAT",
+      "state": "PARTIAL",
+      "target_weight": 0.02631578947368421,
+      "approximate_allocation": 157.5698293107701
+    },
+    {
+      "ticker": "BA",
+      "state": "CASH",
+      "target_weight": 0.0,
+      "approximate_allocation": 0.0
+    },
+    {
+      "ticker": "DIS",
+      "state": "FULL",
+      "target_weight": 0.05263157894736842,
+      "approximate_allocation": 315.1396586215402
+    },
+    {
+      "ticker": "GE",
+      "state": "PARTIAL",
+      "target_weight": 0.02631578947368421,
+      "approximate_allocation": 157.5698293107701
+    }
+  ],
+  "generatedFrom": "src/portfolio_engine.py / results/portfolio_v1_daily.csv"
+}
