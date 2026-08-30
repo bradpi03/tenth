@@ -94,7 +94,7 @@ function App() {
   const primaryMetrics = [
     { label: 'Portfolio Value', value: currency.format(overview.endingPortfolioValue) },
     { label: 'Annualised Return', value: signedPercent(overview.annualisedReturn) },
-    { label: 'Max Drawdown', value: percent(Math.abs(overview.maxDrawdown)) },
+    { label: 'Max Drawdown', value: percent(overview.maxDrawdown) },
     { label: 'Sharpe', value: overview.sharpe.toFixed(2) },
   ]
 
@@ -344,7 +344,7 @@ function App() {
             </article>
             <article className="kpi-card tertiary">
               <span>Max Drawdown</span>
-              <strong>{percent(Math.abs(overview.maxDrawdown))}</strong>
+              <strong>{percent(overview.maxDrawdown)}</strong>
             </article>
             <article className="kpi-card tertiary">
               <span>Transaction Costs</span>
@@ -384,7 +384,7 @@ function App() {
                     <td>{row.year}</td>
                     <td>{signedPercent(row.tenthReturn)}</td>
                     <td>{signedPercent(row.spyReturn)}</td>
-                    <td>{percent(Math.abs(row.tenthMaxDrawdown))}</td>
+                    <td>{percent(row.tenthMaxDrawdown)}</td>
                     <td>{percent(row.avgExposure / 100)}</td>
                     <td>{currency.format(row.endValue)}</td>
                   </tr>
